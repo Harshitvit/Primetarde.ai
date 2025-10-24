@@ -1,5 +1,3 @@
-
-
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -8,13 +6,14 @@ import plotly.graph_objects as go
 from datetime import timedelta
 from scipy.stats import ttest_ind, mannwhitneyu
 import statsmodels.formula.api as smf
+import gdown
+import os
 
 st.set_page_config(layout='wide', page_title='Trader Performance vs Sentiment', initial_sidebar_state='expanded')
 
 # ---------------------- Helpers ----------------------
 @st.cache_data
 def prepare_data(trades_df, fg_df):
-    # normalize col names
     trades = trades_df.copy()
     fg = fg_df.copy()
 
@@ -25,7 +24,6 @@ def prepare_data(trades_df, fg_df):
             time_col = c
             break
     if time_col is None:
-        # fallback to first col that looks like date/time
         for c in trades.columns:
             if 'time' in c.lower() or 'date' in c.lower():
                 time_col = c
@@ -33,7 +31,6 @@ def prepare_data(trades_df, fg_df):
     if time_col is None:
         raise RuntimeError('No time column found in trades file.')
 
-    # map a few common fields
     def find_col(df, keywords):
         for k in keywords:
             for c in df.columns:
@@ -57,7 +54,6 @@ def prepare_data(trades_df, fg_df):
     if side_col: trades = trades.rename(columns={side_col:'side'})
     if sym_col: trades = trades.rename(columns={sym_col:'symbol'})
 
-    # parse time
     if np.issubdtype(trades['time'].dtype, np.number):
         sample = trades['time'].dropna().iloc[0]
         unit = 'ms' if sample > 1e12 else 's'
@@ -66,7 +62,6 @@ def prepare_data(trades_df, fg_df):
         trades['time_dt'] = pd.to_datetime(trades['time'], errors='coerce')
     trades['date'] = trades['time_dt'].dt.date
 
-    # numeric conversions
     trades['closedPnL'] = pd.to_numeric(trades['closedPnL'], errors='coerce')
     trades['win'] = trades['closedPnL'] > 0
     if 'leverage' in trades.columns:
@@ -74,7 +69,6 @@ def prepare_data(trades_df, fg_df):
     if 'size' in trades.columns:
         trades['size'] = pd.to_numeric(trades['size'], errors='coerce')
 
-    # Fear & Greed
     date_col = None
     for c in fg.columns:
         if 'date' in c.lower():
@@ -93,7 +87,6 @@ def prepare_data(trades_df, fg_df):
     fg = fg.rename(columns={date_col:'Date', sent_col:'sentiment'})
     fg['Date'] = pd.to_datetime(fg['Date'], errors='coerce').dt.date
 
-    # daily aggregation
     agg_funcs = {'closedPnL': ['sum','mean','median'], 'account': pd.Series.nunique}
     if 'size' in trades.columns:
         agg_funcs['size'] = ['mean','median']
@@ -107,7 +100,6 @@ def prepare_data(trades_df, fg_df):
     daily['Date'] = pd.to_datetime(daily['Date']).dt.date
     daily = daily.merge(fg[['Date','sentiment']], on='Date', how='left')
 
-    # lagged sentiment columns
     daily_dt = pd.to_datetime(daily['Date'])
     mapping = dict(zip(fg['Date'], fg['sentiment']))
     for lag in [1,2,3,7]:
@@ -116,26 +108,26 @@ def prepare_data(trades_df, fg_df):
 
     return trades, fg, daily
 
-import os
-
 # ---------------------- Data Loading ----------------------
 st.sidebar.header('Data Status')
 
-# Use direct file paths for local files
-historical_file_path = 'https://drive.google.com/file/d/1IAfLZwu6rJzyWKgBToqwSmmVYU6VbjVs/view?usp=sharing'
-fg_file_path = 'fear_greed.csv'
+# Use Google Drive ID for historical dataset
+historical_drive_id = "1IAfLZwu6rJzyWKgBToqwSmmVYU6VbjVs"
+historical_file_path = "historical_trades.csv"
 
+# Automatically download the historical dataset if not already downloaded
 if not os.path.exists(historical_file_path):
-    st.error(f'Historical trades file not found: {historical_file_path}')
-    st.stop()
+    st.sidebar.info("Downloading historical trader data from Google Drive...")
+    gdown.download(f"https://drive.google.com/uc?id={historical_drive_id}", historical_file_path, quiet=False)
+
+fg_file_path = "fear_greed.csv"
 if not os.path.exists(fg_file_path):
     st.error(f'Fear & Greed file not found: {fg_file_path}')
     st.stop()
-    
+
 st.sidebar.success(f'✅ Found: {historical_file_path}')
 st.sidebar.success(f'✅ Found: {fg_file_path}')
 
-# Load data
 try:
     trades_df = pd.read_csv(historical_file_path)
     fg_df = pd.read_csv(fg_file_path)
@@ -144,7 +136,6 @@ except Exception as e:
     st.error(f'Failed to load files: {e}')
     st.stop()
 
-# Prepare
 with st.spinner('Preparing data...'):
     trades, fg, daily = prepare_data(trades_df, fg_df)
 
@@ -175,7 +166,6 @@ if 'leverage_mean' in daily.columns:
 else:
     lev_cut = None
 
-# Apply filters
 mask = (pd.to_datetime(daily['Date']).dt.date >= date_range[0]) & (pd.to_datetime(daily['Date']).dt.date <= date_range[1])
 if selected_sent:
     mask &= daily['sentiment'].isin(selected_sent)
@@ -183,8 +173,6 @@ if lev_cut is not None and 'leverage_mean' in daily.columns:
     mask &= daily['leverage_mean'] <= lev_cut
 
 filtered_daily = daily[mask].copy()
-
-# For trade-level filters (accounts/symbol)
 trade_mask = (pd.to_datetime(trades['time_dt']).dt.date >= date_range[0]) & (pd.to_datetime(trades['time_dt']).dt.date <= date_range[1])
 if selected_accounts:
     trade_mask &= trades['account'].astype(str).isin(selected_accounts)
@@ -197,7 +185,6 @@ filtered_trades = trades[trade_mask].copy()
 st.title('Trader Performance × Bitcoin Fear & Greed')
 st.markdown('Interactive dashboard to explore how market sentiment relates to trader performance.')
 
-# Top metrics
 col1, col2, col3, col4 = st.columns(4)
 with col1:
     st.metric('Period start', str(date_range[0]))
@@ -208,7 +195,6 @@ with col3:
 with col4:
     st.metric('Unique accounts (period)', int(filtered_trades['account'].nunique()))
 
-# Main charts
 st.header('Overview')
 left, right = st.columns([2,1])
 
@@ -229,7 +215,6 @@ with right:
     fig_sent = px.pie(sent_counts, names='sentiment', values='count', title='Sentiment distribution')
     st.plotly_chart(fig_sent, use_container_width=True)
 
-# Sentiment impact
 st.header('Sentiment Impact')
 colA, colB = st.columns(2)
 with colA:
@@ -241,7 +226,6 @@ with colB:
     box2 = px.box(filtered_daily, x='sentiment', y='win_rate', points='all', title='Win rate by sentiment')
     st.plotly_chart(box2, use_container_width=True)
 
-# Per-account exploration
 st.header('Account-level (sample)')
 if selected_accounts:
     account_to_show = st.selectbox('Choose account to inspect', options=selected_accounts)
@@ -257,7 +241,6 @@ if selected_accounts:
 else:
     st.info('Select one or more accounts in the sidebar to enable account-level analysis.')
 
-# Statistical tests
 st.header('Statistical tests')
 st.write('Compare Fear vs Greed for daily mean closedPnL and win_rate (period filter applied).')
 if st.button('Run Fear vs Greed tests'):
@@ -280,7 +263,6 @@ if st.button('Run Fear vs Greed tests'):
 
     st.write(out)
 
-# Regression quick model
 st.header('Quick regression (daily)')
 if st.button('Run OLS: closedPnL_mean ~ sentiment + leverage_mean + account_count'):
     reg_df = filtered_daily.copy()
@@ -303,7 +285,6 @@ if st.button('Run OLS: closedPnL_mean ~ sentiment + leverage_mean + account_coun
         except Exception as e:
             st.error(f'Regression error: {e}')
 
-# Download aggregated data
 st.header('Download data')
 st.write('Download the cleaned daily aggregated CSV for offline analysis.')
 @st.cache_data
