@@ -93,10 +93,10 @@ You can deploy this app easily on [Streamlit Cloud](https://streamlit.io/cloud).
 
 1. Push this project to a GitHub repository.
 2. Go to Streamlit Cloud → “New app”.
-3. Select your repo and `streamlit_trader_sentiment_app.py` file.
+3. Select your repo and `streamlit_das.py` file.
 4. Add your Google Drive dataset links or upload CSVs.
 
-🔗 **Live Demo:** [Add your Streamlit app link here once deployed]
+🔗 **Live Demo:** https://primetardeai-bviw6ev96j2wuczvjyt7gq.streamlit.app/
 
 ---
 
