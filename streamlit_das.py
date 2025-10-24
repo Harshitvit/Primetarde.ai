@@ -122,7 +122,7 @@ import os
 st.sidebar.header('Data Status')
 
 # Use direct file paths for local files
-historical_file_path = 'historical_trades.csv'
+historical_file_path = 'https://drive.google.com/file/d/1IAfLZwu6rJzyWKgBToqwSmmVYU6VbjVs/view?usp=sharing'
 fg_file_path = 'fear_greed.csv'
 
 if not os.path.exists(historical_file_path):
